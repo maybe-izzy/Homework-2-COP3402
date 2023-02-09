@@ -1,3 +1,4 @@
 Log of updates to code: 
 
 2/8: created repo and uploaded initial files - Izzy 
+2/9: added lexer.c file and a potential idea of how it could be implemented - Izzy 
