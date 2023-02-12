@@ -20,16 +20,58 @@
 
 // Lexer variables 
 int done_flag; 
+
+unsigned int current_state; 
 unsigned int line; 
 unsigned int column; 
+
 FILE *file_ptr; 
 const char *file_name; 
-char *buffer; 
+char buffer[MAX_IDENT_LENGTH + 1]; 
 
 // Returns token type if the input character is a string of some sort
 int string_type(){
     if (strcmp(buffer, "var") == 0){
         return varsym; 
+    }
+    else if (strcmp(buffer, "do") == 0){
+        return dosym; 
+    }
+    else if (strcmp(buffer, "skip") == 0){
+        return skipsym; 
+    }
+    else if (strcmp(buffer, "const") == 0){
+        return constsym; 
+    }
+    else if (strcmp(buffer, "begin") == 0){
+        return beginsym; 
+    }
+    else if (strcmp(buffer, "call") == 0){
+        return callsym; 
+    }
+    else if (strcmp(buffer, "procedure") == 0){
+        return procsym; 
+    }
+    else if (strcmp(buffer, "end") == 0){
+        return endsym; 
+    }
+    else if (strcmp(buffer, "write") == 0){
+        return writesym; 
+    }
+    else if (strcmp(buffer, "read") == 0){
+        return readsym; 
+    }
+    else if (strcmp(buffer, "if") == 0){
+        return ifsym; 
+    }
+    else if (strcmp(buffer, "then") == 0){
+        return thensym; 
+    }
+    else if (strcmp(buffer, "else") == 0){
+        return elsesym; 
+    }
+    else if (strcmp(buffer, "odd") == 0){
+        return oddsym; 
     }
     else {
         return identsym; 
@@ -49,13 +91,12 @@ void lexer_open(const char *fname){
     }
 
     // Initialize the lexer
-    column = 1; 
+    column = 0; 
     line = 1; 
     file_name = fname; 
     file_ptr = fp; 
     done_flag = 0; 
-    buffer = (char*) malloc(sizeof(char) * (MAX_IDENT_LENGTH + 2)); 
-    strcpy(buffer, ""); 
+    buffer_reset(); 
 }
 
 void lexer_close(){
@@ -67,9 +108,7 @@ bool lexer_done(){
     if (done_flag){
         return true; 
     }
-    else {
-        return false; 
-    }
+    return false; 
 }
 
 const char *lexer_filename(){
@@ -81,7 +120,13 @@ unsigned int lexer_line(){
 }
 
 unsigned int lexer_column(){
-    return column;
+    int len = strlen(buffer); 
+    if (len > 0){
+        return (column -  strlen(buffer) + 1);
+    }
+    else {
+        return column; 
+    }
 }
 
 // Push character to the buffer 
@@ -91,9 +136,8 @@ void buffer_cat(char c){
     if (len >= MAX_IDENT_LENGTH){
         bail_with_error("Max identifier length exceeded"); 
     }
-
-    buffer[len] = c; 
-    buffer[len + 1] = '\0'; 
+    // CHECK FOR LEGAL INPUT
+    strncat(buffer, &c, 1); 
 }
 
 token assemble_token(token_type type){
@@ -138,7 +182,9 @@ void eat_characters(){
                 line++; 
                 column = 0;  
             }
-            column++; 
+            else {
+                column++;
+            } 
         }
         else if (current_char == '#'){ // Detect comments 
             while (peek_stream() != '\n'){
@@ -157,12 +203,12 @@ void eat_characters(){
 }
 
 token lexer_next(){
-    // Eat characters until meaningful input is encountered 
     eat_characters(); 
+    char error[50]; 
 
     char current_char = getc(file_ptr);
-    
-    
+    column++; 
+
     if (current_char == EOF){
         done_flag = 1; 
         return assemble_token(eofsym); 
@@ -172,6 +218,9 @@ token lexer_next(){
         char next_char = peek_stream(); 
         
         while (isalpha(next_char) || isdigit(next_char)){
+            if (!(isalpha(next_char) || isdigit(next_char)) && (!isspace(next_char))){
+
+            }
             buffer_cat(getc(file_ptr));
             column++; 
             next_char = peek_stream(); 
@@ -191,16 +240,77 @@ token lexer_next(){
     }
     else if (ispunct(current_char)){
         buffer_cat(current_char); 
+        
         if (current_char == ':'){
+            eat_characters(); 
             char next_char = peek_stream(); 
             if (next_char == '='){
                 column++; 
                 buffer_cat(getc(file_ptr));
                 return assemble_token(becomessym);  
             }
+            else { 
+                column++; // readjust the column 
+                sprintf(error, "Expecting '=' after a colon, not '%c'", next_char); 
+                lexical_error(file_name, lexer_line(), lexer_column(), error); 
+            }
         }
         else if (current_char == ';'){
             return assemble_token(semisym); 
+        }
+        else if (current_char == '.'){
+            return assemble_token(periodsym); 
+        }
+        else if (current_char == ','){
+            return assemble_token(commasym); 
+        }
+        else if (current_char == '='){
+            return assemble_token(eqsym); 
+        }
+        else if (current_char == '('){
+            return assemble_token(lparensym); 
+        }
+        else if (current_char == ')'){
+            return assemble_token(rparensym); 
+        }
+        else if (current_char == '<'){
+            char next_char = peek_stream(); 
+            if (next_char == '>'){
+                column++; 
+                buffer_cat(getc(file_ptr));
+                return assemble_token(neqsym); 
+            }
+            else if (next_char == '='){
+                column++; 
+                buffer_cat(getc(file_ptr)); 
+                return assemble_token(leqsym); 
+            }
+            else {
+                return assemble_token(lessym); 
+            }
+        }
+        else if (current_char == '>'){
+            char next_char = peek_stream(); 
+            if (next_char == '='){
+                column++; 
+                buffer_cat(getc(file_ptr));
+                return assemble_token(geqsym); 
+            }
+            else {
+                return assemble_token(gtrsym); 
+            }
+        }
+        else if (current_char == '+'){
+            return assemble_token(plussym); 
+        }
+        else if (current_char == '-'){
+            return assemble_token(minussym); 
+        }
+        else if (current_char == '/'){
+            return assemble_token(divsym); 
+        }
+        else if (current_char == '*'){
+            return assemble_token(multsym); 
         }
     }
     else {
