@@ -3,4 +3,4 @@ Log of updates to code:
 2/8: created repo and uploaded initial files - Izzy 
 2/9: added lexer.c file and a potential idea of how it could be implemented - Izzy 
 2/12: added more functions to lexer file and started working on handling the error checking - Izzy 
-2/13: lexer.c finished, all test cases passing. Starting to refactor. 
+2/13: lexer.c finished, all test cases passing. Starting to refactor. - Izzy
