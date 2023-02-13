@@ -259,11 +259,12 @@ token lexer_next(){
         next_char = get_character(); 
     
         while (isdigit(next_char)){
+            // Ensure input is not running beyond the max acceptable length 
             if ((atoi(buffer) > SHRT_MAX) || (atoi(buffer) < SHRT_MIN)){
                 sprintf(error, "The value of %d is too large for a short!", atoi(buffer)); 
                 lexical_error(file_name, lexer_line(), lexer_column(), error);
             }
-            next_char = get_character(); 
+            next_char = get_character();
         }
         put_back(); 
         return assemble_token(numbersym); 
