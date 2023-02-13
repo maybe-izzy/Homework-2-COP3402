@@ -149,7 +149,6 @@ unsigned int lexer_column(){
 
 // Push character to the buffer 
 void buffer_cat(char c){
-    int len = strlen(buffer); 
     strncat(buffer, &c, 1); 
 }
 
@@ -203,34 +202,28 @@ void eat_characters(){
 
     while (!stop_eating){
         current_char =  get_character(); 
-        //printf("Col: %d", column); 
         
         if (isspace(current_char)){
             if (current_char == '\n'){
                 line++; 
                 column = 0;  
             }
-           // printf("Col: %d", column); 
         }
         else if (current_char == '#'){ // Detect comments 
             while (current_char != '\n'){
-                //printf("Col: %d", column); 
                 current_char = get_character(); 
                 if (current_char == EOF){
                     lexical_error(file_name, lexer_line(), column, "File ended while reading comment!");
                 }
             }
-            //printf("Col: %d", column); 
             put_back(); 
         }
         else {
-            printf("Col: %d", column); 
             stop_eating = 1; 
         }
     }   
     put_back();
     buffer_reset();  
-    printf("Col: %d", column); 
 }
 
 token lexer_next(){
