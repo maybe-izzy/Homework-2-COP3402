@@ -19,19 +19,16 @@
 #include "lexer_output.h"
 #include "utilities.h"
 
-// Lexer variables 
+// Variables associated with lexer 
 int done_flag; 
-
-unsigned int current_state; 
 unsigned int line; 
 unsigned int column; 
-
 FILE *file_ptr; 
 const char *file_name; 
 char buffer[MAX_IDENT_LENGTH + 1]; 
 char legal_symbols[] = {'>', '<', '(', ')', '*', '+', '-', '/', ':', ';', ',', '.', '='}; 
 
-// Returns token type if the input character is a string of some sort
+// Returns token type for a string input character 
 int string_type(){
     if (strcmp(buffer, "var") == 0){
         return varsym; 
@@ -80,10 +77,12 @@ int string_type(){
     }
 }
 
+// Checks if a character is legal in the lexer's accepted alphabet 
 void is_legal(char c){
     if (isalpha(c) || isdigit(c) || isspace(c) || (c == EOF)){
         return; 
     }
+    // If character is symbol, verify 
     else {
         for (int i = 0; i < 13; i++){
             if (c == legal_symbols[i]){
@@ -96,6 +95,7 @@ void is_legal(char c){
     }
 }
 
+// "Resets" the buffer for character intake
 void buffer_reset(){
     strcpy(buffer, ""); 
 }
@@ -118,7 +118,6 @@ void lexer_open(const char *fname){
 }
 
 void lexer_close(){
-    // Close the input file 
     fclose(file_ptr); 
 }
 
@@ -152,6 +151,7 @@ void buffer_cat(char c){
     strncat(buffer, &c, 1); 
 }
 
+// Function to assemble a token 
 token assemble_token(token_type type){
     token new_token; 
 
@@ -160,7 +160,7 @@ token assemble_token(token_type type){
     new_token.line = lexer_line(); 
 
     if (type == numbersym){
-        new_token.value = atoi(buffer); 
+        new_token.value = atoi(buffer); // Already have error handling for vals > length of short
     }
     if (type == eofsym){
         new_token.text = NULL; 
@@ -173,29 +173,23 @@ token assemble_token(token_type type){
     return new_token; 
 }
 
-char peek_stream(){
-    char c = getc(file_ptr); 
-    ungetc(c, file_ptr); 
-
-    return c;
-}
-
-
+// Gets a character from input and appends it to the running buffer 
 char get_character(){
     column++;
     char c = getc(file_ptr);  
     buffer_cat(c);
+
     return c;
 }
 
+// Pushes a character back to input 
 void put_back(){
     ungetc(buffer[strlen(buffer) - 1], file_ptr); 
     buffer[strlen(buffer) - 1] = '\0'; 
     column--; 
 }
 
-
-// Eat characters until encounter something meaningful 
+// Eats whitespace/comments until meaningful input is encountered
 void eat_characters(){ 
     int stop_eating = 0; 
     char current_char; 
@@ -203,25 +197,30 @@ void eat_characters(){
     while (!stop_eating){
         current_char =  get_character(); 
         
+        // Handle whitespace
         if (isspace(current_char)){
             if (current_char == '\n'){
                 line++; 
                 column = 0;  
             }
         }
-        else if (current_char == '#'){ // Detect comments 
+        // Handle comments 
+        else if (current_char == '#'){  
             while (current_char != '\n'){
                 current_char = get_character(); 
                 if (current_char == EOF){
                     lexical_error(file_name, lexer_line(), column, "File ended while reading comment!");
                 }
+                // Remove comment character from the buffer 
+                buffer_reset(); 
             }
-            put_back(); 
+            ungetc(current_char, file_ptr); 
         }
         else {
             stop_eating = 1; 
         }
     }   
+    // Put back the meaningful input which was encountered and reset the buffer
     put_back();
     buffer_reset();  
 }
@@ -234,23 +233,28 @@ token lexer_next(){
     is_legal(current_char); 
     char next_char; 
 
+    // Detect end of input 
     if (current_char == EOF){
         done_flag = 1; 
         return assemble_token(eofsym); 
     }
+    // Detect keywords and identifiers  
     else if (isalpha(current_char)){ 
         next_char = get_character(); 
 
         while (isalpha(next_char) || isdigit(next_char)){
             next_char = get_character(); 
             
+            // Ensure input is not running beyond the max acceptable length 
             if (strlen(buffer) >= MAX_IDENT_LENGTH){
                 lexical_error(file_name, lexer_line(), lexer_column(), "Identifier starting %s is too long!", buffer);
             }
         }
         put_back(); 
+        // Assemble a token with an appropriate type for the string input 
         return assemble_token(string_type()); 
     }
+    // Detect numerical input  
     else if (isdigit(current_char)){
         next_char = get_character(); 
     
@@ -264,16 +268,16 @@ token lexer_next(){
         put_back(); 
         return assemble_token(numbersym); 
     }
-    else if (ispunct(current_char)){
+    // Detect punctuation input 
+    else {
         if (current_char == ':'){
             next_char = get_character(); 
             if (next_char == '='){
                 return assemble_token(becomessym);  
             }
             else { 
-                sprintf(error, "Expecting '=' after a colon, not '%c'", next_char); 
                 // Since error is specific to character at current column, use the non-adjusted column value
-                lexical_error(file_name, lexer_line(), column, error); 
+                lexical_error(file_name, lexer_line(), column, "Expecting '=' after a colon, not '%c'", next_char); 
             }
         }
         else if (current_char == ';'){
@@ -329,9 +333,9 @@ token lexer_next(){
         else if (current_char == '*'){
             return assemble_token(multsym); 
         }
-    }
-    else {
-        // ERROR
+        else {
+            // Intentionally left empty 
+        }
     }
 }
 
@@ -346,7 +350,7 @@ int main(int argc, char *argv[]){
     } 
     // Throw error if received invalid command line args 
     else {
-	    bail_with_error("Too many arguments in lexer invocation"); 
+	    bail_with_error("Invalid arguments in lexer invocation"); 
     }
     return EXIT_SUCCESS;
 }
