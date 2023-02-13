@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 #include <ctype.h>
 #include "token.h"
 #include "lexer_output.h"
@@ -28,6 +29,7 @@ unsigned int column;
 FILE *file_ptr; 
 const char *file_name; 
 char buffer[MAX_IDENT_LENGTH + 1]; 
+char legal_symbols[] = {'>', '<', '(', ')', '*', '+', '-', '/', ':', ';', ',', '.', '='}; 
 
 // Returns token type if the input character is a string of some sort
 int string_type(){
@@ -76,7 +78,23 @@ int string_type(){
     else {
         return identsym; 
     }
-}  
+}
+
+void is_legal(char c){
+    if (isalpha(c) || isdigit(c) || isspace(c) || (c == EOF)){
+        return; 
+    }
+    else {
+        for (int i = 0; i < 13; i++){
+            if (c == legal_symbols[i]){
+                return; 
+            }
+        }
+        char error[50]; 
+        sprintf(error, "Illegal character '%c' (%.3o)", c, c); 
+        lexical_error(file_name, lexer_line(), lexer_column(), error);
+    }
+}
 
 void buffer_reset(){
     strcpy(buffer, ""); 
@@ -132,11 +150,6 @@ unsigned int lexer_column(){
 // Push character to the buffer 
 void buffer_cat(char c){
     int len = strlen(buffer); 
-    
-    if (len >= MAX_IDENT_LENGTH){
-        bail_with_error("Max identifier length exceeded"); 
-    }
-    // CHECK FOR LEGAL INPUT
     strncat(buffer, &c, 1); 
 }
 
@@ -169,90 +182,105 @@ char peek_stream(){
 }
 
 
+char get_character(){
+    column++;
+    char c = getc(file_ptr);  
+    buffer_cat(c);
+    return c;
+}
+
+void put_back(){
+    ungetc(buffer[strlen(buffer) - 1], file_ptr); 
+    buffer[strlen(buffer) - 1] = '\0'; 
+    column--; 
+}
+
+
 // Eat characters until encounter something meaningful 
 void eat_characters(){ 
     int stop_eating = 0; 
     char current_char; 
 
     while (!stop_eating){
-        current_char = getc(file_ptr); 
-
+        current_char =  get_character(); 
+        //printf("Col: %d", column); 
+        
         if (isspace(current_char)){
             if (current_char == '\n'){
                 line++; 
                 column = 0;  
             }
-            else {
-                column++;
-            } 
+           // printf("Col: %d", column); 
         }
         else if (current_char == '#'){ // Detect comments 
-            while (peek_stream() != '\n'){
-               current_char = getc(file_ptr); 
-               if (current_char == EOF){
-                    // ERROR; 
-               }
-               column++; 
+            while (current_char != '\n'){
+                //printf("Col: %d", column); 
+                current_char = get_character(); 
+                if (current_char == EOF){
+                    lexical_error(file_name, lexer_line(), column, "File ended while reading comment!");
+                }
             }
+            //printf("Col: %d", column); 
+            put_back(); 
         }
         else {
-            ungetc(current_char, file_ptr); 
+            printf("Col: %d", column); 
             stop_eating = 1; 
         }
-    }    
+    }   
+    put_back();
+    buffer_reset();  
+    printf("Col: %d", column); 
 }
 
 token lexer_next(){
     eat_characters(); 
     char error[50]; 
 
-    char current_char = getc(file_ptr);
-    column++; 
+    char current_char = get_character(); 
+    is_legal(current_char); 
+    char next_char; 
 
     if (current_char == EOF){
         done_flag = 1; 
         return assemble_token(eofsym); 
     }
     else if (isalpha(current_char)){ 
-        buffer_cat(current_char); 
-        char next_char = peek_stream(); 
-        
-        while (isalpha(next_char) || isdigit(next_char)){
-            if (!(isalpha(next_char) || isdigit(next_char)) && (!isspace(next_char))){
+        next_char = get_character(); 
 
+        while (isalpha(next_char) || isdigit(next_char)){
+            next_char = get_character(); 
+            
+            if (strlen(buffer) >= MAX_IDENT_LENGTH){
+                lexical_error(file_name, lexer_line(), lexer_column(), "Identifier starting %s is too long!", buffer);
             }
-            buffer_cat(getc(file_ptr));
-            column++; 
-            next_char = peek_stream(); 
         }
+        put_back(); 
         return assemble_token(string_type()); 
     }
     else if (isdigit(current_char)){
-        buffer_cat(current_char); 
-        char next_char = peek_stream(); 
+        next_char = get_character(); 
     
         while (isdigit(next_char)){
-            buffer_cat(getc(file_ptr));
-            column++; 
-            next_char = peek_stream(); 
+            if ((atoi(buffer) > SHRT_MAX) || (atoi(buffer) < SHRT_MIN)){
+                sprintf(error, "The value of %d is too large for a short!", atoi(buffer)); 
+                lexical_error(file_name, lexer_line(), lexer_column(), error);
+            }
+            next_char = get_character(); 
         }
+        put_back(); 
         return assemble_token(numbersym); 
     }
     else if (ispunct(current_char)){
-        buffer_cat(current_char); 
-        
         if (current_char == ':'){
-            eat_characters(); 
-            char next_char = peek_stream(); 
+            next_char = get_character(); 
             if (next_char == '='){
-                column++; 
-                buffer_cat(getc(file_ptr));
                 return assemble_token(becomessym);  
             }
             else { 
-                column++; // readjust the column 
                 sprintf(error, "Expecting '=' after a colon, not '%c'", next_char); 
-                lexical_error(file_name, lexer_line(), lexer_column(), error); 
+                // Since error is specific to character at current column, use the non-adjusted column value
+                lexical_error(file_name, lexer_line(), column, error); 
             }
         }
         else if (current_char == ';'){
@@ -274,29 +302,25 @@ token lexer_next(){
             return assemble_token(rparensym); 
         }
         else if (current_char == '<'){
-            char next_char = peek_stream(); 
+            char next_char = get_character(); 
             if (next_char == '>'){
-                column++; 
-                buffer_cat(getc(file_ptr));
                 return assemble_token(neqsym); 
             }
             else if (next_char == '='){
-                column++; 
-                buffer_cat(getc(file_ptr)); 
                 return assemble_token(leqsym); 
             }
             else {
+                put_back(); 
                 return assemble_token(lessym); 
             }
         }
         else if (current_char == '>'){
-            char next_char = peek_stream(); 
+            char next_char = get_character(); 
             if (next_char == '='){
-                column++; 
-                buffer_cat(getc(file_ptr));
                 return assemble_token(geqsym); 
             }
             else {
+                put_back(); 
                 return assemble_token(gtrsym); 
             }
         }
